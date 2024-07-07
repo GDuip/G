@@ -1,0 +1,180 @@
+-- Configuration Section
+_G.HitboxEnabled = false
+_G.BaseHitboxSize = 20
+_G.DistanceMultiplier = 0.5
+_G.MaxHitboxSize = 50
+_G.MinHitboxSize = 10
+_G.TriggerDistance = 100
+_G.Transparency = 0.7
+_G.HumanoidScale = 1.5
+_G.FriendColor = Color3.fromRGB(0, 0, 255)
+_G.EnemyColor = Color3.fromRGB(255, 0, 0)
+_G.UseTeamColor = true
+_G.HitboxLerpSpeed = 0.1
+
+local RunService = game:GetService('RunService')
+local Players = game:GetService('Players')
+local LocalPlayer = Players.LocalPlayer
+
+-- ESP Setup
+local ESPHolder = Instance.new("Folder", game.CoreGui)
+ESPHolder.Name = "ESP"
+
+local BoxTemplate = Instance.new("BoxHandleAdornment")
+BoxTemplate.Name = "TemplateBox"
+BoxTemplate.Size = Vector3.new(1, 2, 1)
+BoxTemplate.Color3 = Color3.new(100 / 255, 100 / 255, 100 / 255)
+BoxTemplate.Transparency = 0.7
+BoxTemplate.ZIndex = 0
+BoxTemplate.AlwaysOnTop = false
+BoxTemplate.Visible = false
+
+local NameTagTemplate = Instance.new("BillboardGui")
+NameTagTemplate.Name = "TemplateNameTag"
+NameTagTemplate.Enabled = false
+NameTagTemplate.Size = UDim2.new(0, 200, 0, 50)
+NameTagTemplate.AlwaysOnTop = true
+NameTagTemplate.StudsOffset = Vector3.new(0, 1.8, 0)
+
+local TagTemplate = Instance.new("TextLabel", NameTagTemplate)
+TagTemplate.Name = "Tag"
+TagTemplate.BackgroundTransparency = 1
+TagTemplate.Position = UDim2.new(0, -50, 0, 0)
+TagTemplate.Size = UDim2.new(0, 300, 0, 20)
+TagTemplate.TextSize = 15
+TagTemplate.TextColor3 = Color3.new(100 / 255, 100 / 255, 100 / 255)
+TagTemplate.TextStrokeColor3 = Color3.new(0, 0, 0)
+TagTemplate.TextStrokeTransparency = 0.4
+TagTemplate.Text = "nil"
+TagTemplate.Font = Enum.Font.SourceSansBold
+
+-- Function to adjust the hitbox size based on distance
+local function adjustHitboxSize(character)
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        local distance = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+        if distance <= _G.TriggerDistance then
+            local targetSize = math.clamp(_G.BaseHitboxSize * (_G.DistanceMultiplier / distance), _G.MinHitboxSize, _G.MaxHitboxSize)
+            rootPart.Size = rootPart.Size:Lerp(Vector3.new(targetSize, targetSize, targetSize), _G.HitboxLerpSpeed)
+            rootPart.Transparency = _G.Transparency
+            rootPart.Material = Enum.Material.Neon
+            rootPart.CanCollide = false
+        end
+    end
+end
+
+-- Function to adjust the humanoid scale
+local function adjustHumanoidScale(humanoid)
+    humanoid.BodyHeightScale.Value = _G.HumanoidScale
+    humanoid.BodyWidthScale.Value = _G.HumanoidScale
+    humanoid.BodyDepthScale.Value = _G.HumanoidScale
+end
+
+-- Function to load the ESP elements for a character
+local function loadCharacterESP(character)
+    local espFolder = ESPHolder:FindFirstChild(character.Name) or Instance.new("Folder", ESPHolder)
+    espFolder.Name = character.Name
+
+    local box = BoxTemplate:Clone()
+    box.Name = character.Name .. "Box"
+    box.Adornee = character
+    box.Parent = espFolder
+
+    local nameTag = NameTagTemplate:Clone()
+    nameTag.Name = character.Name .. "NameTag"
+    nameTag.Enabled = true
+    nameTag.Parent = espFolder
+    nameTag.Adornee = character:WaitForChild("Head", 5)
+    if not nameTag.Adornee then return end
+    nameTag.Tag.Text = character.Name
+
+    local teamColor = character.TeamColor.Color
+    box.Color3 = teamColor
+    nameTag.Tag.TextColor3 = teamColor
+end
+
+-- Function to load player and setup necessary connections
+local function loadPlayer(player)
+    local espFolder = Instance.new("Folder", ESPHolder)
+    espFolder.Name = player.Name
+
+    player.CharacterAdded:Connect(function(character)
+        character:WaitForChild("Humanoid")
+        loadCharacterESP(character)
+
+        character.Humanoid.Changed:Connect(function(prop)
+            if prop == "TeamColor" then
+                espFolder:ClearAllChildren()
+                loadCharacterESP(character)
+            end
+        end)
+    end)
+end
+
+-- Function to initialize ESP for all current players and handle future players
+local function initializeESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            loadPlayer(player)
+        end
+    end
+
+    Players.PlayerAdded:Connect(loadPlayer)
+    Players.PlayerRemoving:Connect(function(player)
+        local espFolder = ESPHolder:FindFirstChild(player.Name)
+        if espFolder then espFolder:Destroy() end
+    end)
+end
+
+-- Function to adjust the hitbox dynamically based on distance
+local function dynamicHitboxAdjustment()
+    RunService.RenderStepped:Connect(function()
+        if _G.HitboxEnabled then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    adjustHitboxSize(player.Character)
+                    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                    if humanoid then
+                        adjustHumanoidScale(humanoid)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Function to handle ESP coloring for players
+local function handleESPColoring()
+    local function esp(target, color)
+        if target.Character then
+            if not target.Character:FindFirstChild("GetReal") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "GetReal"
+                highlight.Adornee = target.Character
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.FillColor = color
+                highlight.Parent = target.Character
+            else
+                target.Character.GetReal.FillColor = color
+            end
+        end
+    end
+
+    while task.wait() do
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local color = _G.UseTeamColor and player.TeamColor.Color or ((LocalPlayer.TeamColor == player.TeamColor) and _G.FriendColor or _G.EnemyColor)
+                esp(player, color)
+            end
+        end
+    end
+end
+
+-- Initialize all functions
+initializeESP()
+dynamicHitboxAdjustment()
+handleESPColoring()
+
+
+
+
